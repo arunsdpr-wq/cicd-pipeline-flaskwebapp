@@ -2,54 +2,49 @@ name: Flask CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [ main, staging ]
+  release:
+    types: [published]
 
 jobs:
-  build-and-test:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
-
+        uses: actions/checkout@v4
+      
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-
+          python-version: '3.9'
+          
       - name: Install Dependencies
         run: |
-          python -m venv venv
-          source venv/bin/activate
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
-
+          
       - name: Run Tests
-        run: |
-          source venv/bin/activate
-          # Replace with your actual test command (e.g., pytest or python -m unittest)
-          python -m unittest discover tests
+        run: pytest
 
-  deploy:
-    needs: build-and-test
+  build:
+    needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     steps:
-      - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 172.31.40.19  # Note: Use Public IP if GitHub cannot see your Private IP
-          username: ubuntu
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            mkdir -p /home/ubuntu/app
-            cd /home/ubuntu/app
-            if [ ! -d ".git" ]; then
-                git clone https://github.com/arunsdpr-wq/cicd-pipeline-flaskwebapp.git .
-            else
-                git pull origin main
-            fi
-            python3 -m venv venv
-            ./venv/bin/pip install -r requirements.txt
-            sudo systemctl restart flaskapp || echo "Service not found, starting manually"
-            nohup ./venv/bin/python app.py > /dev/null 2>&1 &
+      - name: Build Application
+        run: echo "Building application artifacts..."
+
+  deploy-staging:
+    needs: build
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Staging
+        run: echo "Deploying to Staging environment using ${{ secrets.STAGING_API_KEY }}"
+
+  deploy-production:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Production
+        run: echo "Deploying to Production using ${{ secrets.PROD_API_KEY }}"
